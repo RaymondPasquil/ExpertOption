@@ -4,9 +4,9 @@ const axios = require('axios');
 const cron = require('node-cron');
 
 // === CONFIGURATION ===
-const TELEGRAM_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN';
-const TAAPI_KEY = 'YOUR_TAAPI_API_KEY'; // Register at taapi.io for free API
-const USER_CHAT_ID = 'YOUR_TELEGRAM_CHAT_ID'; // Replace with your actual Telegram user/chat ID
+const TELEGRAM_TOKEN = '7840446185:AAEDjXg34-b8mo5-vMBdpWhI0sJ2gDOSU5Y';
+const TAAPI_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbHVlIjoiNjg0ZWYxM2E4MDZmZjE2NTFlOGFmZmQ2IiwiaWF0IjoxNzUwMDA0MjExLCJleHAiOjMzMjU0NDY4MjExfQ.4xcL2WmEO74_6MzCqGSQkb_Vb0zpkAJubSZhxy5l0_U'; // Register at taapi.io for free API
+const USER_CHAT_ID = '@Mondc30'; // Replace with your actual Telegram user/chat ID
 const SYMBOL = 'EURUSD';
 const INTERVAL = '30m';
 
