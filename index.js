@@ -1,25 +1,29 @@
-// expert-option-bot/index.js
+require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const cron = require('node-cron');
 
 // === CONFIGURATION ===
-const TELEGRAM_TOKEN = '7840446185:AAEDjXg34-b8mo5-vMBdpWhI0sJ2gDOSU5Y';
-const TAAPI_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbHVlIjoiNjg0ZWYxM2E4MDZmZjE2NTFlOGFmZmQ2IiwiaWF0IjoxNzUwMDA0MjExLCJleHAiOjMzMjU0NDY4MjExfQ.4xcL2WmEO74_6MzCqGSQkb_Vb0zpkAJubSZhxy5l0_U'; // Register at taapi.io for free API
-const USER_CHAT_ID = '@Mondc30'; // Replace with your actual Telegram user/chat ID
-const SYMBOL = 'EURUSD';
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const TAAPI_KEY = process.env.TAAPI_KEY;
+const USER_CHAT_ID = '@Mondc30';
+const SYMBOL = 'ETH/USDT';
 const INTERVAL = '30m';
+const EXCHANGE = 'binance';
 
 // === INIT BOT ===
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+
+// === TRADE HISTORY ===
+let tradeHistory = [];
 
 // === INDICATOR FETCH ===
 async function fetchIndicators(symbol) {
   try {
     const [ema20, ema50, rsi] = await Promise.all([
-      axios.get(`https://api.taapi.io/ema?secret=${TAAPI_KEY}&exchange=binance&symbol=${symbol}/USDT&interval=${INTERVAL}&optInTimePeriod=20`),
-      axios.get(`https://api.taapi.io/ema?secret=${TAAPI_KEY}&exchange=binance&symbol=${symbol}/USDT&interval=${INTERVAL}&optInTimePeriod=50`),
-      axios.get(`https://api.taapi.io/rsi?secret=${TAAPI_KEY}&exchange=binance&symbol=${symbol}/USDT&interval=${INTERVAL}`)
+      axios.get(`https://api.taapi.io/ema?secret=${TAAPI_KEY}&exchange=${EXCHANGE}&symbol=${symbol}&interval=${INTERVAL}&optInTimePeriod=20`),
+      axios.get(`https://api.taapi.io/ema?secret=${TAAPI_KEY}&exchange=${EXCHANGE}&symbol=${symbol}&interval=${INTERVAL}&optInTimePeriod=50`),
+      axios.get(`https://api.taapi.io/rsi?secret=${TAAPI_KEY}&exchange=${EXCHANGE}&symbol=${symbol}&interval=${INTERVAL}`)
     ]);
 
     return {
@@ -28,7 +32,24 @@ async function fetchIndicators(symbol) {
       rsi: rsi.data.value
     };
   } catch (error) {
-    console.error('Error fetching indicators:', error);
+    if (error.response) {
+      console.error('TAAPI Error:', error.response.status, error.response.data);
+    } else {
+      console.error('Error fetching indicators:', error.message);
+    }
+    return null;
+  }
+}
+
+// === GET CURRENT BINANCE PRICE ===
+async function getCurrentPrice(symbol) {
+  const pair = symbol.replace('/', '').toUpperCase(); // e.g., ETHUSDT
+  const url = `https://api.binance.com/api/v3/ticker/price?symbol=${pair}`;
+  try {
+    const res = await axios.get(url);
+    return parseFloat(res.data.price);
+  } catch (error) {
+    console.error('Error fetching Binance price:', error.message);
     return null;
   }
 }
@@ -44,31 +65,85 @@ function checkSignal({ ema20, ema50, rsi }) {
   }
 }
 
-// === ALERT FUNCTION ===
+// === STORE TRADE ===
+function storeTrade(signal, entryPrice) {
+  const trade = {
+    time: new Date(),
+    symbol: SYMBOL,
+    signal,
+    entryPrice,
+    status: "pending"
+  };
+  tradeHistory.push(trade);
+  return trade;
+}
+
+// === EVALUATE TRADE ===
+async function evaluateTrade(trade) {
+  const exitPrice = await getCurrentPrice(trade.symbol);
+  if (!exitPrice) {
+    bot.sendMessage(USER_CHAT_ID, `⚠️ Could not fetch exit price. Skipping trade evaluation.`);
+    return;
+  }
+
+  const won =
+    (trade.signal === 'buy' && exitPrice > trade.entryPrice) ||
+    (trade.signal === 'sell' && exitPrice < trade.entryPrice);
+
+  trade.status = won ? 'win' : 'loss';
+
+  bot.sendMessage(USER_CHAT_ID,
+    `📊 Trade Result\nSymbol: ${trade.symbol}\nSignal: ${trade.signal.toUpperCase()}\nEntry: ${trade.entryPrice}\nExit: ${exitPrice}\nResult: ${won ? '✅ WIN' : '❌ LOSS'}`
+  );
+
+  calculateWinRate();
+}
+
+// === CALCULATE WIN RATE ===
+function calculateWinRate() {
+  const completed = tradeHistory.filter(t => t.status !== "pending");
+  const wins = completed.filter(t => t.status === "win").length;
+  const total = completed.length;
+  const rate = total ? (wins / total) * 100 : 0;
+
+  bot.sendMessage(USER_CHAT_ID,
+    `📈 Win Rate: ${rate.toFixed(2)}% (${wins}/${total} trades)`
+  );
+}
+
+// === SIGNAL CHECK AND EXECUTION ===
 async function sendSignal() {
   const data = await fetchIndicators(SYMBOL);
   if (!data) return;
 
-  const signal = checkSignal(data);
-  if (signal) {
-    const msg = `⚡️ Expert Option 30-Min Signal\nAsset: ${SYMBOL}\n${signal}\n\nEMA20: ${data.ema20.toFixed(4)}\nEMA50: ${data.ema50.toFixed(4)}\nRSI: ${data.rsi.toFixed(2)}`;
+  const signalText = checkSignal(data);
+  if (signalText) {
+    const signal = signalText.includes('BUY') ? 'buy' : 'sell';
+    const entryPrice = await getCurrentPrice(SYMBOL);
+    if (!entryPrice) return;
+
+    const trade = storeTrade(signal, entryPrice);
+
+    const msg = `⚡️ 30-Min ExpertOption Signal\nAsset: ${SYMBOL}\n${signalText}\n\nEMA20: ${data.ema20.toFixed(2)}\nEMA50: ${data.ema50.toFixed(2)}\nRSI: ${data.rsi.toFixed(2)}\nEntry Price: ${entryPrice}`;
     bot.sendMessage(USER_CHAT_ID, msg);
+
+    setTimeout(() => evaluateTrade(trade), 30 * 60 * 1000);
   } else {
     console.log('No valid signal this interval.');
   }
 }
 
-// === SCHEDULE EVERY 30 MIN ===
+// === RUN EVERY 30 MINUTES ===
 cron.schedule('*/30 * * * *', () => {
-  console.log('Checking 30-min strategy...');
+  console.log('⏳ Checking 30-minute strategy...');
   sendSignal();
 });
 
 // === BOT COMMANDS ===
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, '✅ Expert Option Bot is running. You will receive alerts every 30 minutes when conditions match.');
+  bot.sendMessage(msg.chat.id, '✅ Expert Option Bot is running.\nYou will receive alerts every 30 minutes when conditions match.');
 });
 
 bot.onText(/\/status/, (msg) => {
-  bot.sendMessage(msg.chat.id, `📊 Monitoring ${SYMBOL} every 30 minutes for strategy conditions.`);
+  bot.sendMessage(msg.chat.id, `📊 Monitoring ${SYMBOL} every 30 minutes for strategy signals.`);
 });
