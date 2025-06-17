@@ -87,6 +87,7 @@ async function runStrategies() {
     const ema9 = calculateEMA(closes, 9);
     const ema21 = calculateEMA(closes, 21);
     const crossoverBuy = ema9.at(-2) < ema21.at(-2) && ema9.at(-1) > ema21.at(-1);
+    const crossoverSell = ema9.at(-2) > ema21.at(-2) && ema9.at(-1) < ema21.at(-1);
 
     const boll = calculateBollingerBands(closes);
     const lastClose = closes.at(-1);
@@ -101,7 +102,13 @@ async function runStrategies() {
       const msg = `📉 RSI + MACD signal detected - BUY\nRSI: ${latestRSI.toFixed(2)}\nMACD Histogram: ${latestMACD.histogram.toFixed(4)}\nPrice: ${lastClose}`;
       console.log(msg);
       await sendTelegramMessage(msg);
-      logSignal('RSI+MACD', lastClose, msg);
+      logSignal('RSI+MACD BUY', lastClose, msg);
+      signalDetected = true;
+    } else if (STRATEGIES.rsi_macd && latestRSI > 70 && latestMACD.histogram < 0) {
+      const msg = `📈 RSI + MACD signal detected - SELL\nRSI: ${latestRSI.toFixed(2)}\nMACD Histogram: ${latestMACD.histogram.toFixed(4)}\nPrice: ${lastClose}`;
+      console.log(msg);
+      await sendTelegramMessage(msg);
+      logSignal('RSI+MACD SELL', lastClose, msg);
       signalDetected = true;
     }
 
@@ -109,7 +116,13 @@ async function runStrategies() {
       const msg = `📈 EMA crossover signal detected - BUY\nEMA9: ${ema9.at(-1).toFixed(2)}\nEMA21: ${ema21.at(-1).toFixed(2)}\nPrice: ${lastClose}`;
       console.log(msg);
       await sendTelegramMessage(msg);
-      logSignal('EMA Crossover', lastClose, msg);
+      logSignal('EMA Crossover BUY', lastClose, msg);
+      signalDetected = true;
+    } else if (STRATEGIES.ema_crossover && crossoverSell) {
+      const msg = `📉 EMA crossover signal detected - SELL\nEMA9: ${ema9.at(-1).toFixed(2)}\nEMA21: ${ema21.at(-1).toFixed(2)}\nPrice: ${lastClose}`;
+      console.log(msg);
+      await sendTelegramMessage(msg);
+      logSignal('EMA Crossover SELL', lastClose, msg);
       signalDetected = true;
     }
 
@@ -117,7 +130,13 @@ async function runStrategies() {
       const msg = `🔻 Bollinger + RSI signal detected - BUY\nRSI: ${latestRSI.toFixed(2)}\nClose: ${lastClose}\nLower Band: ${latestBoll.lower.toFixed(2)}`;
       console.log(msg);
       await sendTelegramMessage(msg);
-      logSignal('Bollinger + RSI', lastClose, msg);
+      logSignal('Bollinger + RSI BUY', lastClose, msg);
+      signalDetected = true;
+    } else if (STRATEGIES.bollinger_rsi && lastClose > latestBoll.upper && latestRSI > 70) {
+      const msg = `🔺 Bollinger + RSI signal detected - SELL\nRSI: ${latestRSI.toFixed(2)}\nClose: ${lastClose}\nUpper Band: ${latestBoll.upper.toFixed(2)}`;
+      console.log(msg);
+      await sendTelegramMessage(msg);
+      logSignal('Bollinger + RSI SELL', lastClose, msg);
       signalDetected = true;
     }
 
@@ -125,7 +144,13 @@ async function runStrategies() {
       const msg = `📊 Stochastic + RSI signal detected - BUY\nRSI: ${latestRSI.toFixed(2)}\nStoch K: ${latestStoch.k.toFixed(2)}\nStoch D: ${latestStoch.d.toFixed(2)}\nPrice: ${lastClose}`;
       console.log(msg);
       await sendTelegramMessage(msg);
-      logSignal('Stochastic + RSI', lastClose, msg);
+      logSignal('Stochastic + RSI BUY', lastClose, msg);
+      signalDetected = true;
+    } else if (STRATEGIES.stochastic_rsi && latestStoch.k > 80 && latestStoch.k < latestStoch.d && latestRSI > 70) {
+      const msg = `📊 Stochastic + RSI signal detected - SELL\nRSI: ${latestRSI.toFixed(2)}\nStoch K: ${latestStoch.k.toFixed(2)}\nStoch D: ${latestStoch.d.toFixed(2)}\nPrice: ${lastClose}`;
+      console.log(msg);
+      await sendTelegramMessage(msg);
+      logSignal('Stochastic + RSI SELL', lastClose, msg);
       signalDetected = true;
     }
 
