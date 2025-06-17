@@ -13,7 +13,6 @@ const {
   calculateStochastic
 } = require('./indicators');
 
-// === CONFIG ===
 const SYMBOL = 'BTCUSDT';
 const INTERVAL = '30m';
 const STRATEGIES = {
@@ -25,19 +24,52 @@ const STRATEGIES = {
 
 const logFile = path.join(__dirname, 'trade-log.csv');
 if (!fs.existsSync(logFile)) {
-  fs.writeFileSync(logFile, 'Time,Strategy,Price,Details\n');
+  fs.writeFileSync(logFile, 'Time,Strategy,Price,Details,Result\n');
 }
 
-function logSignal(strategy, price, details) {
+function logSignal(strategy, entryPrice, details, result = '') {
   const time = new Date().toISOString();
-  const entry = `${time},${strategy},${price},"${details.replace(/\n/g, ' | ')}"\n`;
+  const entry = `${time},${strategy},${entryPrice},"${details.replace(/\n/g, ' | ')}",${result}\n`;
   fs.appendFileSync(logFile, entry);
+  if (!result) {
+    fs.appendFileSync('pending-results.json', JSON.stringify({ strategy, time, entryPrice }) + '\n');
+  }
 }
 
 function logNoSignal(message) {
   const time = new Date().toISOString();
-  const entry = `${time},No Signal,,"${message}"\n`;
+  const entry = `${time},No Signal,,,"${message}"\n`;
   fs.appendFileSync(logFile, entry);
+}
+
+async function evaluatePendingResults() {
+  const file = 'pending-results.json';
+  if (!fs.existsSync(file)) return;
+
+  const lines = fs.readFileSync(file, 'utf-8').trim().split('\n');
+  const remaining = [];
+  const candles = await getCandleData(SYMBOL, INTERVAL, 2);
+  const latestPrice = candles.at(-1).close;
+
+  for (const line of lines) {
+    try {
+      const { strategy, time, entryPrice } = JSON.parse(line);
+      const entryTime = new Date(time);
+      const now = new Date();
+      const diff = (now - entryTime) / 60000;
+
+      if (diff >= 30) {
+        const result = latestPrice > entryPrice ? 'profit' : 'loss';
+        logSignal(strategy, entryPrice, `Auto-evaluated result after 30 min. Current Price: ${latestPrice}`, result);
+      } else {
+        remaining.push(line);
+      }
+    } catch (e) {
+      console.error('Failed to process pending result:', e);
+    }
+  }
+
+  fs.writeFileSync(file, remaining.join('\n'));
 }
 
 async function runStrategies() {
@@ -112,5 +144,6 @@ cron.schedule('*/30 * * * *', async () => {
   const msg = `⏱️ Running 30-min strategies at ${new Date().toLocaleString()}`;
   console.log(msg);
   await sendTelegramMessage(msg);
+  await evaluatePendingResults();
   await runStrategies();
 });
