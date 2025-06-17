@@ -9,6 +9,7 @@ const binance = new Binance().options({
 
 async function getCandleData(symbol, interval = '30m', limit = 100) {
   return new Promise((resolve, reject) => {
+     console.log('Requesting candlesticks:', symbol, interval, limit);
     binance.candlesticks(symbol, interval, (error, ticks) => {
       if (error) return reject(error);
       const candles = ticks.map(t => ({
